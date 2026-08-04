@@ -150,9 +150,9 @@ export default function DiaComercial() {
 
       {/* Regla de oro */}
       <div style={{ fontSize: '0.76rem', color: 'var(--muted)', lineHeight: 1.6, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-        <strong style={{ color: '#C9A96E' }}>REGLA DE ORO:</strong> Vitto Mare no es una pescadería, es una empresa gastronómica premium.
-        Toda tarea que no ayude a <strong>facturar</strong>, <strong>conseguir clientes</strong> o <strong>fortalecer la marca</strong> se descarta.
-        El objetivo no son los likes: es <strong>facturar</strong> y construir <strong>clientes recurrentes</strong>. Mañana a las 00:00 todo vuelve a 0.
+        <strong style={{ color: '#C9A96E' }}>REGLA DE ORO:</strong> Onnismeeks no es un freelance de video, es una productora audiovisual.
+        Toda tarea que no ayude a <strong>facturar</strong>, <strong>conseguir marcas</strong> o <strong>fortalecer el portfolio</strong> se descarta.
+        El objetivo no son los likes: es <strong>cerrar proyectos</strong> y construir <strong>clientes recurrentes</strong>. Mañana a las 00:00 todo vuelve a 0.
       </div>
     </div>
   )

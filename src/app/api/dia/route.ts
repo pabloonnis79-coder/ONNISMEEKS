@@ -27,22 +27,12 @@ function parseChecks(value?: string | null): Record<string, string> {
   } catch { return {} }
 }
 
-// Clasifica el rubro de un contacto en uno de los 4 que trabajamos (para el
-// desglose de MD del día). Todo lo que no es sushi/parrilla/cervecería cae en resto.
-function bucketRubro(rubro?: string | null): 'sushi' | 'parrilla' | 'cerveceria' | 'resto' {
-  const n = (rubro || '').toLowerCase().normalize('NFD').split('').filter(c => { const x = c.charCodeAt(0); return x < 0x300 || x > 0x36f }).join('')
-  if (n.includes('sushi')) return 'sushi'
-  if (n.includes('parrilla')) return 'parrilla'
-  if (n.includes('cervec')) return 'cerveceria'
-  return 'resto'
-}
-
 // Tareas manuales (se tildan a mano; también se resetean cada día)
 const MANUAL = [
   { id: 'reel', label: 'Reel del día publicado', modulo: 'Instagram', peso: 1 },
   { id: 'publicacion', label: 'Publicación del día', modulo: 'Instagram', peso: 1 },
   { id: 'historias', label: '5 historias publicadas', modulo: 'Instagram', peso: 1 },
-  { id: 'producto_destacado', label: 'Producto destacado publicado', modulo: 'Instagram', peso: 1 },
+  { id: 'portfolio', label: 'Trabajo del portfolio publicado', modulo: 'Instagram', peso: 1 },
   { id: 'responder', label: 'Respondiste MD y consultas pendientes', modulo: 'Instagram', peso: 2 },
   { id: 'comentar', label: 'Comentaste 10 publicaciones', modulo: 'Captación', peso: 1 },
   { id: 'resp_historias', label: 'Respondiste 10 historias', modulo: 'Captación', peso: 1 },
@@ -62,11 +52,8 @@ export async function GET() {
   ])
 
   const rows = (histRes.data || []) as unknown as { accion: string; clients: { rubro: string | null } | null }[]
-  const mdRows = rows.filter(r => r.accion === 'WhatsApp enviado' || r.accion === 'Instagram enviado')
+  const md = rows.filter(r => r.accion === 'WhatsApp enviado' || r.accion === 'Instagram enviado').length
   const follows = rows.filter(r => r.accion === 'Instagram seguido').length
-  // Desglose de MD por rubro (los 4 que trabajamos): 5 de cada uno = 20
-  const mdRubro = { sushi: 0, parrilla: 0, cerveceria: 0, resto: 0 }
-  for (const r of mdRows) mdRubro[bucketRubro(r.clients?.rubro)]++
   const nuevos = nuevosRes.count || 0
   const ordenes = ordersRes.data || []
   const pedidos = ordenes.length
@@ -76,12 +63,9 @@ export async function GET() {
   const checks = parseChecks(setRes.data?.value)
 
   const auto = [
-    { id: 'md_sushi', label: '5 MD a casas de sushi', modulo: 'Ventas', target: 5, actual: mdRubro.sushi, peso: 1 },
-    { id: 'md_parrilla', label: '5 MD a parrillas', modulo: 'Ventas', target: 5, actual: mdRubro.parrilla, peso: 1 },
-    { id: 'md_cerveceria', label: '5 MD a cervecerías', modulo: 'Ventas', target: 5, actual: mdRubro.cerveceria, peso: 1 },
-    { id: 'md_resto', label: '5 MD a restaurantes', modulo: 'Ventas', target: 5, actual: mdRubro.resto, peso: 1 },
-    { id: 'nuevos', label: '10 negocios nuevos agregados', modulo: 'Ventas', target: 10, actual: nuevos, peso: 2 },
-    { id: 'pedidos', label: '2 pedidos', modulo: 'Facturación', target: 2, actual: pedidos, peso: 3 },
+    { id: 'md', label: '20 MD a marcas', modulo: 'Ventas', target: 20, actual: md, peso: 4 },
+    { id: 'nuevos', label: '10 marcas nuevas agregadas', modulo: 'Ventas', target: 10, actual: nuevos, peso: 2 },
+    { id: 'pedidos', label: '2 proyectos cerrados', modulo: 'Facturación', target: 2, actual: pedidos, peso: 3 },
     ...(metaDia > 0 ? [{ id: 'facturacion', label: `Facturar $${metaDia.toLocaleString('es-AR')} hoy`, modulo: 'Facturación', target: metaDia, actual: Math.round(facturadoHoy), peso: 4 }] : []),
     { id: 'seguir', label: 'Seguir 30 cuentas', modulo: 'Captación', target: 30, actual: follows, peso: 1 },
   ].map(o => ({ ...o, tipo: 'auto' as const, done: o.actual >= o.target, frac: Math.min(o.actual / o.target, 1) }))

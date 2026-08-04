@@ -2,12 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Vitto Mare — Panel',
-  description: 'Panel de administración',
-  icons: {
-    icon: 'https://vittomare.com/logo-vitto-mare.png',
-    apple: 'https://vittomare.com/logo-vitto-mare.png',
-  },
+  title: 'Onnismeeks — Panel',
+  description: 'CRM y prospección — Onnismeeks Productora Audiovisual',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

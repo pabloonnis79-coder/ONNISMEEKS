@@ -44,9 +44,9 @@ function LoginForm() {
       <div style={{ width: '100%', maxWidth: 360 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: '2rem', marginBottom: 8 }}>🐟</div>
-          <div style={{ fontWeight: 800, fontSize: '1.4rem', letterSpacing: '-0.5px' }}>Vitto Mare</div>
-          <div style={{ color: 'var(--muted)', fontSize: '0.82rem', marginTop: 4 }}>Sistema de ventas</div>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>🎬</div>
+          <div style={{ fontWeight: 800, fontSize: '1.4rem', letterSpacing: '1px' }}>ONNISMEEKS</div>
+          <div style={{ color: 'var(--muted)', fontSize: '0.82rem', marginTop: 4 }}>CRM · Productora audiovisual</div>
         </div>
 
         <form onSubmit={handleSubmit} style={{

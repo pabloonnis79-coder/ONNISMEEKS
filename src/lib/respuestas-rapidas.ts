@@ -1,47 +1,33 @@
 // Respuestas rápidas (2º mensaje): lo que se manda DESPUÉS de que el prospecto
-// responde, para convertir la consulta en pedido. Enfoque mayorista B2B, tono
-// cordial y directo. El ángulo de producto cambia según el rubro.
-
-function normalizar(s: string): string {
-  return s.toLowerCase().normalize('NFD').split('').filter(c => { const x = c.charCodeAt(0); return x < 0x300 || x > 0x36f }).join('')
-}
-
-// Frase de productos según el rubro (para que el 2º mensaje hable de lo que le sirve)
-function productos(rubro?: string | null): string {
-  const n = normalizar(rubro || '')
-  if (n.includes('sushi')) return 'salmón, atún y mariscos calidad sashimi'
-  if (n.includes('parrilla')) return 'rabas, langostinos, pulpo y mariscos'
-  return 'pescados y mariscos frescos'
-}
+// responde, para avanzar el proyecto. Onnismeeks — productora audiovisual.
+// Tono creativo, cercano y profesional.
 
 export interface RespuestaRapida { id: string; emoji: string; label: string; texto: string }
 
-export function respuestasRapidas(nombre?: string | null, rubro?: string | null, compraMinima?: string | null): RespuestaRapida[] {
+export function respuestasRapidas(nombre?: string | null, _rubro?: string | null, _extra?: string | null): RespuestaRapida[] {
   const lugar = (nombre || '').trim()
   const vos = lugar ? lugar : 'ustedes'
-  const prod = productos(rubro)
-  const min = (compraMinima || '').trim()
 
   return [
     {
-      id: 'catalogo', emoji: '📋', label: 'Catálogo + lista',
-      texto: `¡Genial! 🙌 Te paso el catálogo con la lista de precios mayorista actualizada. Trabajamos ${prod}, con selección diaria y entrega a domicilio. Si querés, decime qué productos usan más y te confirmo disponibilidad y valor puntual. 🐟`,
+      id: 'portfolio', emoji: '📽️', label: 'Portfolio',
+      texto: `¡Genial! 🙌 Te paso algunos trabajos nuestros para que veas el estilo de Onnismeeks. Contame qué tipo de contenido tenés en mente (reels, comercial, video de marca) y te armo una propuesta pensada para ustedes.`,
     },
     {
-      id: 'precios', emoji: '💲', label: 'Cotización',
-      texto: `Perfecto 👌 ¿Qué productos te interesan para arrancar? Te armo la cotización con precios mayoristas y disponibilidad de esta semana, sin compromiso.`,
+      id: 'propuesta', emoji: '💲', label: 'Propuesta',
+      texto: `Perfecto 👌 ¿Qué necesitás — reels mensuales para redes, un comercial, un documental de marca? Con eso te armo una propuesta y presupuesto a medida, sin compromiso.`,
     },
     {
-      id: 'cerrar', emoji: '🤝', label: 'Cerrar pedido',
-      texto: `¿Arrancamos con un primer pedido? 🚚 Coordinamos el día de entrega y te lo llevamos a domicilio con la cadena de frío cuidada de punta a punta.${min ? ` La compra mínima es ${min}.` : ''} ¿Qué día te queda cómodo?`,
+      id: 'reunion', emoji: '📅', label: 'Reunión',
+      texto: `¿Coordinamos una llamada corta esta semana para charlar la idea? 🎬 En 15 minutos te muestro cómo lo encararíamos y qué resultados buscamos. ¿Qué día te queda cómodo?`,
     },
     {
-      id: 'minima', emoji: '🛒', label: 'Mínima / entrega',
-      texto: `Te cuento: ${min ? `la compra mínima es ${min}, ` : ''}entregamos a domicilio y seleccionamos el producto el mismo día para garantizar frescura. Coordinamos el reparto según tu zona. ¿Avanzamos con un pedido de prueba?`,
+      id: 'ideas', emoji: '💡', label: 'Idea concreta',
+      texto: `Se me ocurre algo para ${vos}: un formato de reels que muestre lo mejor de la marca de forma dinámica y con gancho para redes. Si querés te lo desarrollo en una propuesta corta. ¿Avanzamos?`,
     },
     {
       id: 'seguimiento', emoji: '🔁', label: 'Seguimiento suave',
-      texto: `¡Hola${lugar ? ' ' + vos : ''}! 😊 ¿Pudieron ver lo que les pasé? Sin apuro — cuando quieran les acerco la disponibilidad de la semana con ${prod}. Quedo atento a lo que necesiten. 🐟`,
+      texto: `¡Hola${lugar ? ' ' + vos : ''}! 😊 ¿Pudieron ver lo que les mandé? Sin apuro — cuando quieran armamos algo para su próxima campaña. Quedo atento a lo que necesiten 🎬`,
     },
   ]
 }

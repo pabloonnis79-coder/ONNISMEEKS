@@ -10,50 +10,24 @@ const GROUPS = [
       { href: '/admin',            label: 'Hoy',         icon: '⚡' },
       { href: '/admin/dia',        label: 'Iniciar día', icon: '🌅' },
       { href: '/admin/contactar-hoy', label: 'Contactar hoy', icon: '🎯' },
-      { href: '/admin/stock-hoy',   label: 'Stock hoy',    icon: '🐟' },
       { href: '/admin/asistente',  label: 'Asistente',   icon: '🧠' },
-      { href: '/admin/inbox',      label: 'Inbox',       icon: '📥' },
-      { href: '/admin/vender',     label: 'Vender',      icon: '💰' },
-      { href: '/admin/orders',     label: 'Pedidos',     icon: '📦' },
-      { href: '/admin/facturacion', label: 'Facturación', icon: '💰' },
       { href: '/admin/seguimiento',label: 'Seguimiento', icon: '🔔' },
-      { href: '/admin/clients',    label: 'Clientes',    icon: '👥' },
-      { href: '/admin/clientes',   label: 'Reactivar',   icon: '💰' },
-      { href: '/admin/instagram-hoy', label: 'Instagram hoy', icon: '📸' },
-      { href: '/admin/cotizaciones',label: 'Cotizaciones',icon: '📄' },
-    ],
-  },
-  {
-    label: 'Marketing',
-    items: [
-      { href: '/admin/agente',      label: 'Agente IA',     icon: '🤖' },
-      { href: '/admin/broadcast',   label: 'Broadcast',     icon: '📣' },
-      { href: '/admin/reels',       label: 'Reels IA',      icon: '🎬' },
-      { href: '/admin/calendario',  label: 'Calendario',    icon: '📅' },
-      { href: '/admin/marketing',   label: 'Marketing IA',  icon: '✨' },
-      { href: '/admin/images',      label: 'Imágenes IA',   icon: '🎨' },
-      { href: '/admin/instagram-dm',label: 'Instagram DMs', icon: '📸' },
-      { href: '/admin/content',     label: 'Contenido',     icon: '📱' },
+      { href: '/admin/clients',    label: 'Contactos',   icon: '👥' },
+      { href: '/admin/clientes',   label: 'Reactivar',   icon: '🔄' },
+      { href: '/admin/instagram-hoy', label: 'Instagram', icon: '📸' },
+      { href: '/admin/cotizaciones',label: 'Propuestas', icon: '📄' },
+      { href: '/admin/orders',     label: 'Proyectos',   icon: '🎬' },
+      { href: '/admin/facturacion', label: 'Facturación', icon: '💰' },
     ],
   },
   {
     label: 'Config',
     items: [
-      { href: '/admin/productos',   label: 'Catálogo',    icon: '🛍️' },
-      { href: '/admin/productos/lista-precios', label: 'Lista de Precios', icon: '💰' },
-      { href: '/admin/catalogo',    label: 'Catálogo WA', icon: '📲' },
       { href: '/admin/rubros',      label: 'Rubros',      icon: '🏷️' },
       { href: '/admin/duplicados',  label: 'Duplicados',  icon: '🔁' },
-      { href: '/admin/clients/exterior', label: 'Del exterior', icon: '🌎' },
-      { href: '/admin/prospecting', label: 'Prospección', icon: '🔍' },
-      { href: '/admin/grupos',      label: 'Grupos B2C',  icon: '👥' },
-      { href: '/admin/comunidades', label: 'Comunidades', icon: '🌐' },
-      { href: '/admin/telegram',    label: 'Telegram',    icon: '✈️' },
-      { href: '/admin/backup',       label: 'Backup datos',   icon: '💾' },
-      { href: '/admin/sistema',      label: 'Sistema',        icon: '⚙️' },
-      { href: '/admin/mejoras',      label: 'Agente Mejoras', icon: '🔮' },
-      { href: '/admin/ayuda',       label: 'Ayuda',       icon: '📖' },
-      { href: '/admin/settings',    label: 'Configuración',icon: '⚙️' },
+      { href: '/admin/backup',      label: 'Backup datos', icon: '💾' },
+      { href: '/admin/sistema',     label: 'Sistema',     icon: '⚙️' },
+      { href: '/admin/settings',    label: 'Configuración', icon: '🛠️' },
     ],
   },
 ]
@@ -115,8 +89,8 @@ export default function Sidebar() {
         display: 'flex', flexDirection: 'column', gap: 0,
       }}>
         <div style={{ padding: '0 12px 24px', borderBottom: '1px solid var(--border)', marginBottom: 12 }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: 2, textTransform: 'uppercase' }}>Intelligent</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>Sales System</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: 3, textTransform: 'uppercase' }}>🎬 Productora</div>
+          <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--accent)', letterSpacing: 1 }}>ONNISMEEKS</div>
         </div>
 
         {GROUPS.map((group, gi) => {

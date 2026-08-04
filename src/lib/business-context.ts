@@ -8,9 +8,9 @@ export interface BusinessConfig {
 }
 
 const DEFAULTS: BusinessConfig = {
-  name: 'Mi Negocio',
-  description: 'Negocio de ventas en Argentina.',
-  rubrosProspectar: ['restaurante', 'cerveceria', 'parrilla', 'sushi'],
+  name: 'Onnismeeks',
+  description: 'Onnismeeks es una productora audiovisual en Buenos Aires. Producimos reels, comerciales, documentales y contenido para marcas. Ayudamos a negocios a destacar con video de calidad para redes y campañas. Tono creativo, cercano y profesional; mensajes que invitan a charlar un proyecto, sin venta agresiva.',
+  rubrosProspectar: ['gastronomia', 'indumentaria', 'estetica', 'gimnasios', 'inmobiliarias', 'ecommerce'],
   zona: 'Buenos Aires Argentina',
 }
 

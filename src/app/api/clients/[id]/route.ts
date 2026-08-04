@@ -1,0 +1,191 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { STATUS_LABELS } from '@/lib/crm'
+import { cookies } from 'next/headers'
+import { classifyLead } from '@/lib/ai/classify'
+
+// Score delta by status — ajuste relativo sobre el score IA original
+const STATUS_SCORE_DELTA: Record<string, number> = {
+  prospecto:           0,
+  contactado:          5,
+  sin_respuesta:       -5,
+  respondio:           10,
+  interesado:          20,
+  negociacion:         30,
+  presupuesto_enviado: 25,
+  esperando_respuesta: 15,
+  cliente:             40,
+  cliente_recurrente:  50,
+  no_interesado:       -30,
+  perdido:             -40,
+}
+
+type Params = Promise<{ id: string }>
+
+async function getUsuario(): Promise<string> {
+  const store = await cookies()
+  return store.get('iss_session')?.value === 'admin' ? 'admin' : 'usuario'
+}
+
+async function logHistory(db: Awaited<ReturnType<typeof createClient>>, clientId: string, accion: string, detalle?: string) {
+  const usuario = await getUsuario()
+  await db.from('client_history').insert({ client_id: clientId, accion, detalle: detalle || null, usuario })
+}
+
+export async function GET(_req: NextRequest, { params }: { params: Params }) {
+  const { id } = await params
+  const db = await createClient()
+  const { data: client } = await db.from('clients').select('*').eq('id', id).single()
+  const { data: interactions } = await db.from('interactions').select('*').eq('client_id', id).order('created_at', { ascending: false })
+  const { data: orders } = await db.from('orders').select('*, order_items(*, products(*))').eq('client_id', id).order('created_at', { ascending: false })
+  const { data: history } = await db.from('client_history').select('*').eq('client_id', id).order('fecha', { ascending: false })
+  return NextResponse.json({ ...client, interactions, orders, history })
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: Params }) {
+  const { id } = await params
+  const db = await createClient()
+  const body = await req.json()
+
+  // Get current client to detect changes
+  const { data: prev } = await db.from('clients').select('status, prioridad, temperatura, next_followup, name, rubro, notes, score, fecha_primer_contacto').eq('id', id).single()
+
+  // Remove virtual fields before sending to DB
+  const { _accion, _mensaje, ...rawBody } = body
+
+  // Allowlist de columnas válidas en la tabla clients
+  const ALLOWED = new Set([
+    'name','empresa','contacto_nombre','contacto_cargo','type','rubro',
+    'phone','email','city','website','instagram','notes','observaciones',
+    'status','proxima_accion','prioridad','temperatura','score',
+    'probabilidad_cierre','productos_interes','proveedor_actual',
+    'presupuesto_estimado','motivo_perdida','channel','origen','tags',
+    'fecha_primer_contacto','last_contact','next_followup',
+  ])
+  const dbBody = Object.fromEntries(Object.entries(rawBody).filter(([k]) => ALLOWED.has(k))) as Record<string, string>
+
+  // Campos con CHECK constraints: nunca enviar string vacío
+  const CHECK_FIELDS = ['type','prioridad','temperatura','proxima_accion','motivo_perdida','status']
+  for (const f of CHECK_FIELDS) {
+    if (f in dbBody && !dbBody[f]) delete dbBody[f]
+  }
+
+  // Solo actualizar si hay columnas reales; los requests de solo-acción
+  // (envíos, seguir/like) no tocan la tabla clients acá.
+  let data
+  if (Object.keys(dbBody).length > 0) {
+    const res = await db.from('clients').update(dbBody).eq('id', id).select().single()
+    if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 })
+    data = res.data
+  } else {
+    const res = await db.from('clients').select().eq('id', id).single()
+    data = res.data
+  }
+
+  // Log status change + recalcular score dinámicamente
+  if (dbBody.status && prev && dbBody.status !== prev.status) {
+    const de = STATUS_LABELS[prev.status] || prev.status
+    const a  = STATUS_LABELS[dbBody.status as string] || dbBody.status
+    await logHistory(db, id, 'Estado cambiado', `${de} → ${a}`)
+    await db.from('interactions').insert({ client_id: id, channel: 'sistema', type: 'estado', notes: `Estado cambiado: ${de} → ${a}`, ai_generated: false })
+
+    // Recalcular score: base IA + delta por estado
+    try {
+      const ai = await classifyLead({ name: prev.name, rubro: prev.rubro, description: prev.notes })
+      const delta = STATUS_SCORE_DELTA[dbBody.status as string] ?? 0
+      const newScore = Math.max(0, Math.min(100, ai.score + delta))
+      await db.from('clients').update({ score: newScore }).eq('id', id)
+    } catch { /* score update es best-effort */ }
+  }
+
+  // Log seguimiento date change
+  if (dbBody.next_followup && prev && dbBody.next_followup !== prev.next_followup) {
+    await logHistory(db, id, 'Próximo seguimiento actualizado', dbBody.next_followup.split('T')[0])
+  }
+
+  // Log prioridad change
+  if (dbBody.prioridad && prev && dbBody.prioridad !== prev.prioridad) {
+    await logHistory(db, id, 'Prioridad cambiada', dbBody.prioridad)
+  }
+
+  // Log de cambio de etiquetas (listo / sin datos / quitar follow, etc.)
+  if (dbBody.tags && !dbBody.status && !_accion) {
+    await logHistory(db, id, 'Etiquetas actualizadas')
+  }
+
+  // Log generic update if no specific change logged
+  if (!dbBody.status && !dbBody.next_followup && !dbBody.prioridad && !dbBody.tags && !_accion) {
+    await logHistory(db, id, 'Datos actualizados')
+  }
+
+  // Log envío por WhatsApp / Instagram — guarda el texto exacto enviado
+  if (_accion === 'whatsapp_enviado' || _accion === 'instagram_enviado') {
+    const label = _accion === 'instagram_enviado' ? 'Instagram enviado' : 'WhatsApp enviado'
+    const detalle = typeof _mensaje === 'string' && _mensaje.trim() ? _mensaje.trim().slice(0, 800) : undefined
+    await logHistory(db, id, label, detalle)
+    const patch: Record<string, string> = { last_contact: new Date().toISOString() }
+    if (!prev?.fecha_primer_contacto) patch.fecha_primer_contacto = new Date().toISOString()
+
+    // Cantidad de mensajes ya enviados a este contacto (incluye el de recién)
+    const { count: envios } = await db.from('client_history').select('*', { count: 'exact', head: true })
+      .eq('client_id', id).in('accion', ['WhatsApp enviado', 'Instagram enviado'])
+    const sinAvanzar = ['prospecto', 'nuevo', 'contactado'].includes(prev?.status || '')
+
+    if ((envios || 0) >= 3 && sinAvanzar) {
+      // 3+ toques sin respuesta → frenar: marcar "sin respuesta" y no reprogramar
+      patch.status = 'sin_respuesta'
+      await logHistory(db, id, 'Estado cambiado', 'Sin respuesta tras 3 toques — se frena el seguimiento')
+    } else {
+      // Agendar el próximo toque a +3 días y avanzar el estado si aún es prospecto
+      patch.next_followup = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0]
+      if (prev?.status === 'prospecto' || prev?.status === 'nuevo') {
+        patch.status = 'contactado'
+        await logHistory(db, id, 'Estado cambiado', 'Prospecto → Contactado (envío)')
+      }
+    }
+    await db.from('clients').update(patch).eq('id', id)
+  }
+
+  // Marcar seguir / like de Instagram (quedan registrados para siempre)
+  // Marcas de Instagram: quedan en el historial (para los contadores) y como
+  // etiqueta del contacto (para verlas/filtrarlas en la lista).
+  const IG_MARCAS: Record<string, { label: string; tag: string }> = {
+    instagram_seguido:  { label: 'Instagram seguido',  tag: 'ig_seguido' },
+    instagram_like:     { label: 'Instagram like',     tag: 'ig_like' },
+    instagram_te_sigue: { label: 'Instagram te sigue', tag: 'me_sigue' },
+  }
+  if (typeof _accion === 'string' && IG_MARCAS[_accion]) {
+    const { label, tag } = IG_MARCAS[_accion]
+    await logHistory(db, id, label)
+    const { data: cli } = await db.from('clients').select('tags').eq('id', id).single()
+    const t: string[] = Array.isArray(cli?.tags) ? cli.tags : []
+    if (!t.includes(tag)) await db.from('clients').update({ tags: [...t, tag] }).eq('id', id)
+  }
+  // Saltar: lo sacamos del tablero "Instagram hoy" (no reaparece)
+  if (_accion === 'instagram_salteado') await logHistory(db, id, 'Instagram salteado')
+
+  // El cliente respondió: registra la respuesta entrante y avanza el estado si
+  // venía en frío (prospecto/contactado/nuevo/sin respuesta) → respondió.
+  if (_accion === 'respondio') {
+    const detalle = typeof _mensaje === 'string' && _mensaje.trim() ? _mensaje.trim().slice(0, 800) : undefined
+    await logHistory(db, id, 'Respondió', detalle)
+    if (['prospecto', 'contactado', 'nuevo', 'sin_respuesta'].includes(prev?.status || '')) {
+      await db.from('clients').update({ status: 'respondio' }).eq('id', id)
+      await logHistory(db, id, 'Estado cambiado', `${STATUS_LABELS[prev?.status || ''] || prev?.status} → Respondió`)
+    }
+  }
+
+  return NextResponse.json(data)
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Params }) {
+  const store = await cookies()
+  if (store.get('iss_session')?.value !== 'admin') {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  }
+  const { id } = await params
+  const db = await createClient()
+  const { error } = await db.from('clients').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

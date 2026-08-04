@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { classifyLead } from '@/lib/ai/classify'
+import { generateProposal } from '@/lib/ai/proposals'
+import { sendAlert } from '@/lib/telegram/send'
+
+export async function GET(req: NextRequest) {
+  const db = await createClient()
+  const { searchParams } = new URL(req.url)
+  let q = db.from('clients').select('*').order('created_at', { ascending: false })
+  if (searchParams.get('type')) q = q.eq('type', searchParams.get('type')!)
+  if (searchParams.get('status')) q = q.eq('status', searchParams.get('status')!)
+  if (searchParams.get('q')) q = q.ilike('name', `%${searchParams.get('q')}%`)
+  const { data, error } = await q
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
+export async function POST(req: NextRequest) {
+  const db = await createClient()
+  const body = await req.json()
+
+  // Evitar duplicados: si ya existe un contacto con ese Instagram, no crear
+  if (typeof body.instagram === 'string' && body.instagram.trim()) {
+    const h = body.instagram.toLowerCase()
+      .replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/^@/, '').replace(/[/?].*$/, '').trim()
+    if (h) {
+      const { data: dup } = await db.from('clients').select('id').or(`instagram.eq.@${h},instagram.eq.${h}`).limit(1)
+      if (dup && dup.length) return NextResponse.json({ existing: true, id: dup[0].id }, { status: 200 })
+    }
+  }
+
+  // IA: clasificar automáticamente
+  const ai = await classifyLead({ name: body.name, rubro: body.rubro, description: body.notes })
+
+  // Solo campos que existen en la tabla
+  const client = {
+    name: body.name,
+    type: body.type || ai.type,
+    rubro: body.rubro || null,
+    phone: body.phone || null,
+    email: body.email || null,
+    city: body.city || null,
+    instagram: body.instagram || null,
+    website: body.website || null,
+    status: 'prospecto',
+    score: body.score ?? ai.score,
+    channel: body.channel || ai.channel,
+    notes: body.notes || null,
+    tags: [],
+  }
+
+  const { data, error } = await db.from('clients').insert(client).select().single()
+  if (error) {
+    console.error('Supabase error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  await db.from('interactions').insert({
+    client_id: data.id, channel: 'sistema', type: 'alta',
+    notes: `Lead creado. IA: ${ai.reason}`, ai_generated: true,
+  })
+
+  // Log en historial
+  await db.from('client_history').insert({
+    client_id: data.id, accion: 'Cliente creado', detalle: `Score IA: ${data.score}`, usuario: 'sistema',
+  })
+
+  if (data.score >= 75) {
+    try {
+      const proposal = await generateProposal({ name: data.name, rubro: data.rubro || 'negocio', type: data.type, city: data.city })
+      await sendAlert(`Lead caliente: *${data.name}* (score ${data.score})\n\n📱 WA listo: _${proposal.whatsapp}_`)
+    } catch { /* Telegram/IA opcional, no bloquea */ }
+  }
+
+  return NextResponse.json(data, { status: 201 })
+}

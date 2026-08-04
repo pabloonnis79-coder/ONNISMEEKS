@@ -1,0 +1,413 @@
+import { createClient } from '@/lib/supabase/server'
+import { ask, parseJSON } from '@/lib/ai/client'
+import { searchPlaces } from '@/lib/prospecting/serper'
+import { enrichContact, normalizePhone } from '@/lib/prospecting/enrich'
+import { classifyLead } from '@/lib/ai/classify'
+import { generateFollowUp } from '@/lib/ai/followup'
+import { sendProposalEmail } from '@/lib/email/send'
+import { sendMessage } from '@/lib/telegram/send'
+import { daysSince } from '@/lib/utils'
+
+const ZONAS_ROTACION = [
+  'Palermo', 'Recoleta', 'Belgrano', 'San Telmo', 'Caballito', 'Almagro',
+  'Villa Crespo', 'Nunez', 'Flores', 'Barracas', 'Microcentro', 'Colegiales',
+  'San Isidro', 'Vicente Lopez', 'Martinez', 'Olivos', 'Florida', 'Tigre',
+  'San Fernando', 'Pilar', 'Quilmes', 'Avellaneda', 'Lanus', 'Moron',
+]
+
+const RUBROS_ROTACION = [
+  'restaurante', 'parrilla', 'hotel',
+  'catering', 'bodegon', 'rotiseria', 'cantina',
+]
+
+async function log(db: Awaited<ReturnType<typeof createClient>>, turno: string, accion: string, detalle: string, cantidad = 0) {
+  await db.from('agent_logs').insert({ turno, accion, detalle, cantidad })
+}
+
+// TURNO MAÑANA — 8am: prospección + tareas + briefing
+export async function runMañana() {
+  const db = await createClient()
+  const actions: string[] = []
+
+  // Traer todas las combinaciones ya buscadas
+  const { data: logsAnteriores } = await db.from('agent_logs').select('detalle').eq('accion', 'búsqueda')
+  const yasBuscadas = new Set((logsAnteriores || []).map(l => l.detalle))
+
+  // Generar todas las combinaciones posibles y filtrar las ya buscadas
+  const todasCombos: [string, string][] = []
+  for (const z of ZONAS_ROTACION) {
+    for (const r of RUBROS_ROTACION) {
+      const key = `${r} en ${z}`
+      if (!yasBuscadas.has(key)) todasCombos.push([z, r])
+    }
+  }
+
+  // Tomar las próximas 4 combinaciones no buscadas
+  const combos = todasCombos.slice(0, 4)
+  let totalImportados = 0
+
+  if (combos.length === 0) {
+    await log(db, 'mañana', 'prospección', 'Todas las combinaciones zona×rubro ya fueron buscadas. Ciclo completo.', 0)
+    actions.push('✅ Ciclo completo — todas las zonas y rubros ya fueron buscados')
+    await sendMessage(`🤖 *Agente — Turno mañana*\n\n✅ Ciclo completo de prospección. Todas las combinaciones zona×rubro ya fueron buscadas.`)
+    return { actions, importados: 0 }
+  }
+
+  const { data: existing } = await db.from('clients').select('name, phone')
+  const existingNames = new Set((existing || []).map(c => c.name?.toLowerCase().trim()))
+  const existingPhones = new Set((existing || []).map(c => c.phone).filter(Boolean))
+
+  for (const [z, r] of combos) {
+    try {
+      const places = await searchPlaces(r, z)
+      if (!places.length) {
+        await log(db, 'mañana', 'búsqueda', `${r} en ${z} — sin resultados de Serper`, 0)
+        continue
+      }
+      const results = await Promise.all(places.map(async place => {
+        const ai = await classifyLead({ name: place.name, rubro: r, description: place.address })
+        const isDupe = existingNames.has(place.name?.toLowerCase().trim()) || (place.phone && existingPhones.has(place.phone))
+        return { ...place, ...ai, isDupe, instagram: undefined as string | undefined }
+      }))
+      // Candidatos con buen score que no son duplicados
+      const candidatos = results.filter(p => p.score >= 50 && !p.isDupe)
+
+      // Validar teléfonos de Serper (descarta precios, rangos y códigos que no son números reales)
+      for (const p of candidatos) {
+        p.phone = normalizePhone(p.phone)
+      }
+
+      // Enriquecer los que no tienen contacto: buscar teléfono/IG/web en Google
+      let enriquecidos = 0
+      for (const p of candidatos) {
+        if (p.phone || p.website) continue
+        const extra = await enrichContact(p.name, z)
+        if (extra.phone) p.phone = extra.phone
+        if (extra.website) p.website = extra.website
+        if (extra.instagram) p.instagram = extra.instagram
+        if (extra.phone || extra.website || extra.instagram) enriquecidos++
+      }
+
+      // Importar solo los que tienen alguna vía de contacto
+      const toImport = candidatos.filter(p => p.phone || p.website || p.instagram)
+      const descartados = candidatos.length - toImport.length
+      for (const p of toImport) {
+        const { error } = await db.from('clients').insert({
+          name: p.name, type: p.type, rubro: r, phone: p.phone || null,
+          city: z, website: p.website || null, instagram: p.instagram || null,
+          notes: p.address || null,
+          status: 'nuevo', score: p.score, channel: p.channel || 'whatsapp', tags: [],
+        })
+        if (!error) {
+          totalImportados++
+          existingNames.add(p.name?.toLowerCase().trim())
+          if (p.phone) existingPhones.add(p.phone)
+        }
+      }
+      await log(db, 'mañana', 'búsqueda', `${r} en ${z} — ${places.length} encontrados, ${toImport.length} importados (${enriquecidos} enriquecidos), ${descartados} descartados sin contacto`, toImport.length)
+    } catch (err) {
+      await log(db, 'mañana', 'búsqueda', `${r} en ${z} — error: ${err instanceof Error ? err.message : 'desconocido'}`, 0)
+      continue
+    }
+  }
+
+  const zonasHoy = [...new Set(combos.map(([z]) => z))].join(', ')
+  const rubrosHoy = [...new Set(combos.map(([, r]) => r))].join(', ')
+  const restantes = todasCombos.length - combos.length
+
+  await log(db, 'mañana', 'prospección', `Zonas: ${zonasHoy} · Rubros: ${rubrosHoy} · Importados: ${totalImportados} · Quedan: ${restantes} combinaciones`, totalImportados)
+  actions.push(`🔍 ${totalImportados} nuevos prospectos importados`)
+  actions.push(`📍 ${zonasHoy} · ${rubrosHoy}`)
+  actions.push(`📊 Quedan ${restantes} combinaciones por explorar`)
+
+  // Generar tareas prioritarias con IA
+  const { data: clientes } = await db.from('clients').select('*')
+  const cl = clientes || []
+  const nuevosSinContactar = cl.filter(c => c.status === 'nuevo' && daysSince(c.created_at) >= 1)
+  const enSeguimiento = cl.filter(c => c.status === 'contactado' && c.last_contact && daysSince(c.last_contact) >= 2)
+
+  if (nuevosSinContactar.length > 0) {
+    actions.push(`🎯 ${nuevosSinContactar.length} prospectos nuevos sin contactar`)
+  }
+  if (enSeguimiento.length > 0) {
+    actions.push(`📬 ${enSeguimiento.length} clientes en seguimiento sin respuesta`)
+  }
+
+  await log(db, 'mañana', 'tareas', `${nuevosSinContactar.length} sin contactar, ${enSeguimiento.length} en seguimiento`, nuevosSinContactar.length + enSeguimiento.length)
+
+  // Briefing Telegram
+  const resumen = [
+    `🤖 *Agente — Turno mañana*`,
+    `📅 ${new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}`,
+    ``,
+    ...actions,
+    ``,
+    `_El sistema está trabajando. Entrá al panel para ver los resultados._`,
+  ].join('\n')
+  await sendMessage(resumen)
+
+  return { actions, importados: totalImportados }
+}
+
+// TURNO VENTAS — 9am: comunidades + aperturas B2B + reactivación.
+// El agente piensa y redacta; el humano copia, pega y manda.
+export async function runVentas() {
+  const db = await createClient()
+  const actions: string[] = []
+  const briefing: string[] = []
+
+  // 1. COMUNIDADES: las 3 mejores del directorio donde todavía no estás
+  const [{ data: comunidades }, { data: gruposGuardados }] = await Promise.all([
+    db.from('communities').select('*').eq('status', 'activo')
+      .order('score', { ascending: false, nullsFirst: false })
+      .order('members', { ascending: false, nullsFirst: false }).limit(30),
+    db.from('grupos').select('link'),
+  ])
+  const linksGuardados = new Set((gruposGuardados || []).map(g => g.link))
+  const candidatas = (comunidades || []).filter(c => !linksGuardados.has(c.link)).slice(0, 3)
+
+  if (candidatas.length > 0) {
+    const lista = candidatas.map(c => `- "${c.title}" (${c.platform}, ${c.categoria || 'general'}${c.members ? `, ${c.members} miembros` : ''})`).join('\n')
+    const mensajes = await ask(
+      `Sos el dueño de una pescadería premium de Buenos Aires. Vas a entrar a estos grupos/comunidades y necesitás UN mensaje de presentación para cada uno, adaptado al contexto del grupo (no es lo mismo un grupo de vecinos que uno foodie).
+
+GRUPOS:
+${lista}
+
+REGLAS: máximo 50 palabras por mensaje, tono humano y de barrio (nada corporativo), presentate como vecino/emprendedor, ofrecé valor (frescura, delivery), sin links ni precios en el primer mensaje. Español argentino.
+
+Respondé SOLO un array JSON: [{"titulo":"nombre del grupo","mensaje":"..."}]`,
+      600
+    ).then(r => parseJSON<{ titulo: string; mensaje: string }[]>(r)).catch(() => [])
+
+    // Guardarlas en Grupos B2C como pendientes para que queden rastreadas
+    await db.from('grupos').insert(candidatas.map(c => ({
+      zona: c.ciudad || c.provincia || '', tema: c.categoria || 'sugerido por agente',
+      title: c.title, link: c.link, platform: c.platform,
+      snippet: 'sugerido por el agente de ventas', status: 'pendiente',
+    })))
+
+    briefing.push(`👥 *Entrá hoy a estos ${candidatas.length} grupos:*`)
+    for (const c of candidatas) {
+      const msg = mensajes.find(m => m.titulo === c.title)?.mensaje
+        || mensajes[candidatas.indexOf(c)]?.mensaje || ''
+      briefing.push(`\n🔗 ${c.title}${c.members ? ` (${c.members} miembros)` : ''}\n${c.link}${msg ? `\n📝 Mensaje listo:\n_${msg}_` : ''}`)
+    }
+    await log(db, 'ventas', 'comunidades', `${candidatas.length} grupos sugeridos con mensaje de presentación`, candidatas.length)
+    actions.push(`👥 ${candidatas.length} grupos nuevos sugeridos con mensaje listo`)
+  }
+
+  // 2. B2B: los 3 mejores prospectos nuevos con teléfono → apertura personalizada
+  const { data: prospectos } = await db.from('clients').select('*')
+    .eq('status', 'nuevo').not('phone', 'is', null)
+    .order('score', { ascending: false }).limit(3)
+
+  if (prospectos && prospectos.length > 0) {
+    const lista = prospectos.map(p => `- ${p.name} (${p.rubro || 'negocio'}, ${p.city || 'CABA'})`).join('\n')
+    const aperturas = await ask(
+      `Sos el dueño de una pescadería premium de Buenos Aires que vende al por mayor a gastronómicos. Redactá UN primer mensaje de WhatsApp para cada negocio, personalizado según su rubro y zona.
+
+NEGOCIOS:
+${lista}
+
+REGLAS: máximo 45 palabras, presentate con nombre de negocio, mencioná algo específico del rubro del cliente (ej: a una parrilla ofrecele opciones de pescado para la parrilla), cerrá con una pregunta fácil de responder. Sin precios. Español argentino, tuteo.
+
+Respondé SOLO un array JSON: [{"nombre":"nombre del negocio","mensaje":"..."}]`,
+      600
+    ).then(r => parseJSON<{ nombre: string; mensaje: string }[]>(r)).catch(() => [])
+
+    briefing.push(`\n💼 *Contactá hoy a estos ${prospectos.length} prospectos:*`)
+    for (const p of prospectos) {
+      const msg = aperturas.find(a => a.nombre === p.name)?.mensaje
+        || aperturas[prospectos.indexOf(p)]?.mensaje || ''
+      briefing.push(`\n🏪 ${p.name} (${p.rubro || 'negocio'}, score ${p.score})\n📱 ${p.phone}${msg ? `\n📝 Mensaje listo:\n_${msg}_` : ''}`)
+    }
+    await log(db, 'ventas', 'aperturas b2b', `${prospectos.length} aperturas redactadas: ${prospectos.map(p => p.name).join(', ')}`, prospectos.length)
+    actions.push(`💼 ${prospectos.length} aperturas B2B redactadas`)
+  }
+
+  // 3. REACTIVACIÓN: clientes que compraron y no volvieron en 15+ días
+  const { data: clientes } = await db.from('clients').select('*').eq('status', 'cliente')
+  const dormidos = (clientes || [])
+    .filter(c => c.phone && c.last_contact && daysSince(c.last_contact) >= 15)
+    .sort((a, b) => daysSince(b.last_contact) - daysSince(a.last_contact))
+    .slice(0, 3)
+
+  if (dormidos.length > 0) {
+    const lista = dormidos.map(c => `- ${c.name} (última compra hace ${daysSince(c.last_contact)} días)`).join('\n')
+    const reactivaciones = await ask(
+      `Sos el dueño de una pescadería premium. Estos clientes compraron y no volvieron. Redactá UN mensaje de WhatsApp corto para cada uno para reactivarlos sin sonar desesperado.
+
+CLIENTES:
+${lista}
+
+REGLAS: máximo 35 palabras, tono cercano (ya te conocen), preguntá cómo salió lo último que llevaron y mencioná que esta semana hay producto fresco recién llegado. Español argentino, tuteo.
+
+Respondé SOLO un array JSON: [{"nombre":"...","mensaje":"..."}]`,
+      450
+    ).then(r => parseJSON<{ nombre: string; mensaje: string }[]>(r)).catch(() => [])
+
+    briefing.push(`\n😴 *Reactivá a estos ${dormidos.length} clientes dormidos:*`)
+    for (const c of dormidos) {
+      const msg = reactivaciones.find(m => m.nombre === c.name)?.mensaje
+        || reactivaciones[dormidos.indexOf(c)]?.mensaje || ''
+      briefing.push(`\n👤 ${c.name} (hace ${daysSince(c.last_contact)} días)\n📱 ${c.phone}${msg ? `\n📝 Mensaje listo:\n_${msg}_` : ''}`)
+    }
+    await log(db, 'ventas', 'reactivación', `${dormidos.length} mensajes de reactivación: ${dormidos.map(c => c.name).join(', ')}`, dormidos.length)
+    actions.push(`😴 ${dormidos.length} reactivaciones redactadas`)
+  }
+
+  // Plan del día: directivas explícitas con horarios, generado por IA
+  // a partir del material del día
+  let agenda = ''
+  if (briefing.length > 0) {
+    const materialResumen = [
+      candidatas.length ? `${candidatas.length} grupos para entrar (nombres: ${candidatas.map(c => c.title).join(', ')})` : null,
+      prospectos?.length ? `${prospectos.length} prospectos B2B para contactar (${prospectos.map(p => `${p.name} - ${p.rubro}`).join(', ')})` : null,
+      dormidos.length ? `${dormidos.length} clientes dormidos para reactivar (${dormidos.map(c => c.name).join(', ')})` : null,
+    ].filter(Boolean).join('\n')
+
+    const dia = new Date().toLocaleDateString('es-AR', { weekday: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
+    agenda = await ask(
+      `Sos el jefe de ventas de una pescadería premium de Buenos Aires. Hoy es ${dia}. Tu vendedor tiene este material preparado:
+${materialResumen}
+
+Armale la AGENDA DEL DÍA: una lista de directivas explícitas con horario concreto y orden de prioridad. Pensá estratégicamente:
+- Los gastronómicos (B2B) atienden mejor de 10 a 12hs (antes del servicio de mediodía)
+- Los mensajes a clientes finales rinden más de 17 a 19hs (cuando piensan la cena)
+- Entrar a grupos conviene temprano y ESPERAR: no publicar nada el primer día
+- Si es jueves o viernes, priorizar todo lo B2C (el finde se come pescado)
+
+FORMATO: máximo 6 líneas, cada una "🕐 HH:MM — directiva concreta y accionable". Ordenadas por hora. Sin explicaciones extra, sin saludos.`,
+      350
+    ).catch(() => '')
+  }
+
+  // Briefing por Telegram: agenda arriba, material listo abajo
+  if (briefing.length > 0) {
+    await sendMessage([
+      `🤖 *Agente — Turno ventas* 💰`,
+      ``,
+      ...(agenda ? [`📋 *TU AGENDA DE HOY:*`, agenda, ``, `─────────────`, ``] : []),
+      `_Material listo para cada directiva — copiá, pegá y mandá:_`,
+      ``,
+      ...briefing,
+    ].join('\n'))
+    if (agenda) {
+      await log(db, 'ventas', 'agenda', agenda.split('\n').slice(0, 3).join(' · '), 0)
+      actions.push('📋 Agenda del día con horarios enviada por Telegram')
+    }
+  } else {
+    actions.push('Sin material nuevo hoy — el directorio de comunidades y el CRM no tienen candidatos frescos')
+  }
+
+  return { actions }
+}
+
+// TURNO MEDIODÍA — 12pm: escalado de prioridades
+export async function runMediodía() {
+  const db = await createClient()
+  const actions: string[] = []
+
+  const { data: clientes } = await db.from('clients').select('*')
+  const cl = clientes || []
+
+  // Leads sin contactar por más de 2 días → score boost
+  const urgentes = cl.filter(c => c.status === 'nuevo' && daysSince(c.created_at) >= 2)
+  if (urgentes.length > 0) {
+    await log(db, 'mediodia', 'escalado', `${urgentes.length} leads sin contactar hace 2+ días marcados como urgentes`, urgentes.length)
+    actions.push(`⚠️ ${urgentes.length} leads sin contactar escalados a urgente`)
+  }
+
+  // Detectar clientes interesados sin actividad reciente
+  const calientes = cl.filter(c => c.status === 'interesado' && c.last_contact && daysSince(c.last_contact) >= 3)
+  if (calientes.length > 0) {
+    await log(db, 'mediodia', 'alerta', `${calientes.length} clientes interesados sin actividad 3+ días`, calientes.length)
+    actions.push(`🔥 ${calientes.length} clientes interesados sin actividad — revisar hoy`)
+  }
+
+  // Análisis IA del pipeline
+  const stats = {
+    nuevos: cl.filter(c => c.status === 'nuevo').length,
+    contactados: cl.filter(c => c.status === 'contactado').length,
+    interesados: cl.filter(c => c.status === 'interesado').length,
+    clientes: cl.filter(c => c.status === 'cliente').length,
+  }
+
+  const consejo = await ask(
+    `Sos el jefe de ventas. El pipeline tiene: ${stats.nuevos} leads nuevos, ${stats.contactados} contactados, ${stats.interesados} interesados, ${stats.clientes} clientes activos.
+Dame UNA directiva explícita para esta tarde: QUÉ hacer, A QUIÉN (el segmento más urgente del pipeline) y A QUÉ HORA conviene. Formato: "🕐 HH:MM — [acción concreta]". Una sola línea, sin saludos ni explicaciones.`,
+    80
+  ).catch(() => null)
+
+  if (consejo) {
+    await log(db, 'mediodia', 'consejo_ia', consejo, 0)
+    actions.push(`💡 ${consejo}`)
+  }
+
+  if (actions.length > 0) {
+    await sendMessage([`🤖 *Agente — Turno mediodía*`, ``, ...actions].join('\n'))
+  }
+
+  return { actions }
+}
+
+// TURNO TARDE — 6pm: seguimientos automáticos por email
+export async function runTarde() {
+  const db = await createClient()
+  const actions: string[] = []
+
+  const { data: clientes } = await db.from('clients').select('*')
+  const cl = clientes || []
+
+  // Follow-ups automáticos
+  const toFollowUp = cl.filter(c =>
+    c.status === 'contactado' && c.last_contact && c.email &&
+    (daysSince(c.last_contact) === 3 || daysSince(c.last_contact) === 7)
+  )
+
+  let emailsEnviados = 0
+  for (const c of toFollowUp) {
+    try {
+      const days = daysSince(c.last_contact)
+      const fu = await generateFollowUp({ name: c.name, rubro: c.rubro || 'negocio', type: c.type, days })
+      await sendProposalEmail({ to: c.email, client_name: c.name, subject: fu.subject, body: fu.email })
+      await db.from('interactions').insert({
+        client_id: c.id, channel: 'email', type: 'seguimiento',
+        notes: `Follow-up automático día ${days} — ${fu.subject}`, ai_generated: true,
+      })
+      emailsEnviados++
+    } catch { continue }
+  }
+
+  if (emailsEnviados > 0) {
+    await log(db, 'tarde', 'emails', `${emailsEnviados} emails de seguimiento enviados`, emailsEnviados)
+    actions.push(`📧 ${emailsEnviados} emails de seguimiento enviados automáticamente`)
+  }
+
+  // Marcar inactivos
+  const coldIds = cl.filter(c => c.status === 'contactado' && c.last_contact && daysSince(c.last_contact) > 14).map(c => c.id)
+  if (coldIds.length > 0) {
+    await db.from('clients').update({ status: 'inactivo' }).in('id', coldIds)
+    await log(db, 'tarde', 'inactivos', `${coldIds.length} clientes marcados como inactivos`, coldIds.length)
+    actions.push(`😴 ${coldIds.length} clientes sin respuesta marcados como inactivos`)
+  }
+
+  // Resumen del día
+  const { data: logsHoy } = await db.from('agent_logs')
+    .select('*')
+    .gte('created_at', new Date().toISOString().split('T')[0])
+    .order('created_at')
+
+  const resumenDia = [
+    `🤖 *Agente — Resumen del día*`,
+    ``,
+    ...(logsHoy || []).map(l => `• ${l.accion}: ${l.detalle}`),
+    ``,
+    ...actions,
+  ].join('\n')
+
+  await sendMessage(resumenDia)
+
+  return { actions, emails: emailsEnviados }
+}

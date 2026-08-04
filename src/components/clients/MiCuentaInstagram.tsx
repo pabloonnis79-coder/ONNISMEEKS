@@ -1,0 +1,174 @@
+'use client'
+import { useEffect, useState } from 'react'
+
+interface Snap { fecha: string; posts: number; followers: number; following: number; visualizaciones?: number }
+
+type MetricaKey = 'followers' | 'following' | 'posts' | 'visualizaciones'
+const METRICAS: Record<MetricaKey, { label: string; color: string }> = {
+  followers: { label: 'Seguidores', color: '#22c55e' },
+  following: { label: 'Seguidos', color: '#DD2A7B' },
+  posts: { label: 'Publicaciones', color: '#7EC8C8' },
+  visualizaciones: { label: 'Vistas (30d)', color: '#a855f7' },
+}
+
+function delta(actual: number, prev: number | undefined) {
+  if (prev === undefined) return null
+  const d = actual - prev
+  return d
+}
+
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  if (values.length < 2) return null
+  const W = 300, H = 48, pad = 4
+  const min = Math.min(...values), max = Math.max(...values)
+  const range = max - min || 1
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (W - 2 * pad)
+    const y = H - pad - ((v - min) / range) * (H - 2 * pad)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: 'block' }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function Metrica({ label, valor, d }: { label: string; valor: number; d: number | null }) {
+  return (
+    <div style={{ flex: 1, textAlign: 'center', padding: '8px 4px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8 }}>
+      <div style={{ fontSize: '1.15rem', fontWeight: 800 }}>{valor.toLocaleString('es-AR')}</div>
+      <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      {d !== null && d !== 0 && (
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: d > 0 ? '#22c55e' : '#ef4444' }}>
+          {d > 0 ? '▲ +' : '▼ '}{d}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function MiCuentaInstagram() {
+  const [snaps, setSnaps] = useState<Snap[] | null>(null)
+  const [posts, setPosts] = useState('')
+  const [followers, setFollowers] = useState('')
+  const [following, setFollowing] = useState('')
+  const [visualizaciones, setVisualizaciones] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [abierto, setAbierto] = useState(false)
+  const [metrica, setMetrica] = useState<MetricaKey>('followers')
+
+  useEffect(() => {
+    fetch('/api/instagram/cuenta').then(r => r.json()).then(d => {
+      const s: Snap[] = d?.snapshots || []
+      setSnaps(s)
+      const last = s[s.length - 1]
+      if (last) { setPosts(String(last.posts)); setFollowers(String(last.followers)); setFollowing(String(last.following)); setVisualizaciones(String(last.visualizaciones ?? '')) }
+    }).catch(() => setSnaps([]))
+  }, [])
+
+  async function guardar() {
+    setSaving(true)
+    try {
+      const r = await fetch('/api/instagram/cuenta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts: Number(posts), followers: Number(followers), following: Number(following), visualizaciones: Number(visualizaciones) }),
+      })
+      const d = await r.json()
+      setSnaps(d?.snapshots || [])
+      setSaved(true); setTimeout(() => setSaved(false), 2000)
+      setAbierto(false)
+    } finally { setSaving(false) }
+  }
+
+  if (snaps === null) return null
+
+  const last = snaps[snaps.length - 1]
+  const prev = snaps[snaps.length - 2]
+  // Ratio seguidos/seguidores: si seguís a muchos más de los que te siguen, señal de riesgo
+  const ratioRiesgo = last && last.followers > 0 && last.following > last.followers * 1.5
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>📊 Mi cuenta de Instagram</span>
+        <button onClick={() => setAbierto(v => !v)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: 'var(--muted)', fontSize: '0.75rem' }}>
+          {abierto ? 'Cerrar' : (last ? '✏️ Actualizar' : '+ Cargar')}
+        </button>
+      </div>
+
+      {last ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Metrica label="Publicaciones" valor={last.posts} d={delta(last.posts, prev?.posts)} />
+          <Metrica label="Seguidores" valor={last.followers} d={delta(last.followers, prev?.followers)} />
+          <Metrica label="Seguidos" valor={last.following} d={delta(last.following, prev?.following)} />
+          <Metrica label="Vistas (30d)" valor={last.visualizaciones ?? 0} d={delta(last.visualizaciones ?? 0, prev?.visualizaciones)} />
+        </div>
+      ) : (
+        <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+          Cargá los números de tu perfil para empezar a seguir la evolución.
+        </div>
+      )}
+
+      {last && (
+        <div style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+          Última carga: {new Date(last.fecha).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          {prev && ` · antes: ${new Date(prev.fecha).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}`}
+        </div>
+      )}
+
+      {ratioRiesgo && (
+        <div style={{ fontSize: '0.74rem', color: '#f59e0b', background: '#f59e0b12', border: '1px solid #f59e0b44', borderRadius: 8, padding: '7px 10px' }}>
+          ⚠️ Seguís a bastantes más de los que te siguen. Bajá el ritmo de follows y considerá dejar de seguir a los que no te siguieron de vuelta — ese desbalance es una señal de riesgo para Instagram.
+        </div>
+      )}
+
+      {snaps.length >= 2 && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {(['followers', 'following', 'posts', 'visualizaciones'] as const).map(m => (
+              <button key={m} onClick={() => setMetrica(m)} style={{
+                fontSize: '0.7rem', padding: '3px 10px', borderRadius: 12, cursor: 'pointer',
+                border: `1px solid ${metrica === m ? METRICAS[m].color : 'var(--border)'}`,
+                background: metrica === m ? METRICAS[m].color + '22' : 'transparent',
+                color: metrica === m ? METRICAS[m].color : 'var(--muted)', fontWeight: metrica === m ? 700 : 400,
+              }}>{METRICAS[m].label}</button>
+            ))}
+          </div>
+          <Sparkline values={snaps.map(s => s[metrica] ?? 0)} color={METRICAS[metrica].color} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--muted)' }}>
+            <span>{new Date(snaps[0].fecha).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}: {(snaps[0][metrica] ?? 0).toLocaleString('es-AR')}</span>
+            <span>ahora: {(snaps[snaps.length - 1][metrica] ?? 0).toLocaleString('es-AR')}</span>
+          </div>
+        </div>
+      )}
+
+      {abierto && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[
+              { ph: 'Publicaciones', v: posts, set: setPosts },
+              { ph: 'Seguidores', v: followers, set: setFollowers },
+              { ph: 'Seguidos', v: following, set: setFollowing },
+            ].map(f => (
+              <input key={f.ph} type="number" inputMode="numeric" value={f.v} onChange={e => f.set(e.target.value)} placeholder={f.ph}
+                style={{ flex: 1, minWidth: 0, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', color: 'var(--text)', fontSize: '0.85rem' }} />
+            ))}
+          </div>
+          <label style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>
+            👁️ Visualizaciones (últimos 30 días)
+            <input type="number" inputMode="numeric" value={visualizaciones} onChange={e => setVisualizaciones(e.target.value)} placeholder="ej: 12500"
+              style={{ width: '100%', marginTop: 4, background: 'var(--bg)', border: '1px solid #a855f755', borderRadius: 8, padding: '8px 10px', color: 'var(--text)', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+          </label>
+          <button onClick={guardar} disabled={saving} className="btn btn-primary" style={{ padding: '8px', fontSize: '0.85rem' }}>
+            {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar de hoy'}
+          </button>
+          <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>
+            Copiá los números tal cual figuran en tu perfil. Las <strong>visualizaciones de 30 días</strong> están en tu perfil profesional → “Ver panel profesional”.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

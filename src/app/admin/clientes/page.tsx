@@ -8,7 +8,7 @@ export default function ClientesReactivarPage() {
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: 2 }}>💰 Reactivar clientes</h1>
         <p style={{ color: 'var(--muted)', fontSize: '0.82rem' }}>
-          Clientes que compraron y dejaron de comprar. Por cada uno decidí: le escribís hoy, o lo posponés. En mayorista, la recompra es la facturación.
+          Marcas que ya trabajaron con vos y hace rato no vuelven. Por cada una decidí: le escribís hoy, o la posponés. El cliente que repite es el que sostiene la productora.
         </p>
       </div>
       <ClientesReactivar />

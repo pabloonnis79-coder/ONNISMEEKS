@@ -69,10 +69,12 @@ const GROUPS = [
   {
     title: '🏢 Empresa',
     keys: [
-      { key: 'COMPANY_NAME', label: 'Nombre del negocio', placeholder: 'MariscoVittomare' },
+      { key: 'COMPANY_NAME', label: 'Nombre del negocio', placeholder: 'Onnismeeks' },
       { key: 'COMPANY_WHATSAPP', label: 'WhatsApp del negocio', placeholder: '5491100000000' },
-      { key: 'COMPANY_DESCRIPTION', label: 'Qué vendés (para mensajes IA)', placeholder: 'Proveemos mariscos y pescados frescos a restaurantes y hoteles de Buenos Aires' },
-      { key: 'COMPRA_MINIMA', label: 'Compra mínima', placeholder: 'Ej: $5.000 · Zona Norte GBA · Lunes a sábados', hint: 'Aparece en el catálogo y la lista de precios' },
+      { key: 'COMPANY_INSTAGRAM', label: 'Instagram del negocio', placeholder: '@onnismeeks' },
+      { key: 'COMPANY_DESCRIPTION', label: 'Qué hacés (para mensajes IA)', placeholder: 'Productora audiovisual: reels, comerciales, documentales y contenido para marcas' },
+      { key: 'PORTFOLIO_URL', label: 'Link del portfolio', placeholder: 'https://...', hint: 'Botón 🎬 Portfolio en el panel de mensajes' },
+      { key: 'WEB_URL', label: 'Link de la web', placeholder: 'https://...', hint: 'Botón 🌐 Web en el panel de mensajes' },
     ],
   },
 ]

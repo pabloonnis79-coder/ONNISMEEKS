@@ -14,9 +14,9 @@ export default function BackupPage() {
         <div style={{ fontSize: '0.85rem', color: 'var(--text)' }}>
           El archivo incluye:
           <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <li>👥 <strong>Clientes</strong> (toda la cartera)</li>
-            <li>📦 <strong>Pedidos</strong> e ítems</li>
-            <li>⚙️ <strong>Configuración</strong> (settings, incluidos precios mayoristas)</li>
+            <li>👥 <strong>Contactos</strong> (toda la cartera de marcas)</li>
+            <li>🎬 <strong>Proyectos</strong> e ítems</li>
+            <li>⚙️ <strong>Configuración</strong> (settings)</li>
             <li>🕒 <strong>Historial</strong> de contactos e interacciones</li>
           </ul>
         </div>
@@ -26,7 +26,7 @@ export default function BackupPage() {
         </a>
 
         <div style={{ fontSize: '0.72rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-          Se baja un archivo <code>backup-vittomare-FECHA.json</code>. Guardalo en tu compu o Drive.
+          Se baja un archivo <code>backup-onnismeeks-FECHA.json</code>. Guardalo en tu compu o Drive.
           <br />
           <strong style={{ color: 'var(--text)' }}>Recomendación:</strong> bajá un backup <strong>una vez por semana</strong> (o antes de una limpieza grande de contactos). Con eso, si algo le pasa a la base, tenés tus clientes y config a salvo.
         </div>

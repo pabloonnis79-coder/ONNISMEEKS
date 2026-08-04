@@ -10,6 +10,8 @@ const PUBLIC_KEYS = [
   'COMPANY_SLOGAN',
   'COMPANY_DESCRIPTION',
   'COMPRA_MINIMA',
+  'PORTFOLIO_URL',
+  'WEB_URL',
 ]
 
 export async function GET() {

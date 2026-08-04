@@ -36,19 +36,18 @@ export async function GET() {
   const inactivos = (inactivosRes.data || []).map(c => `${c.name} (${c.rubro || 's/rubro'}, no compra hace ${dias(c.last_contact)} días)`).join('; ') || 'ninguno detectado'
   const destacados = ((productos || []).filter(p => p.featured).slice(0, 3).map(p => p.name).join(', ')) || ((productos || []).slice(0, 3).map(p => p.name).join(', ')) || 'sin datos de stock'
 
-  const prompt = `Sos el coordinador comercial de VITTO MARE, empresa gastronómica PREMIUM de pescados y mariscos, venta MAYORISTA a restaurantes, parrillas y casas de sushi en Buenos Aires.
+  const prompt = `Sos el coordinador comercial de ONNISMEEKS, productora audiovisual de Buenos Aires (reels, comerciales, documentales y contenido para marcas). Prospectamos marcas que necesitan video.
 
-Tono: directo, sin felicitaciones, sin vueltas. El único objetivo es FACTURAR y generar recompra. Si algo no ayuda a vender, no lo menciones.
+Tono: directo, sin felicitaciones, sin vueltas. El único objetivo es CERRAR PROYECTOS y generar clientes recurrentes. Si algo no ayuda a vender, no lo menciones.
 
 ESTADO DE HOY:
-- MD enviados: ${md}/20
+- MD enviados a marcas: ${md}/20
 - Cuentas seguidas: ${follows}/30
-- Negocios nuevos agregados: ${nuevos}/10
-- Pedidos: ${pedidos} (facturado $${Math.round(facturado)})
+- Marcas nuevas agregadas: ${nuevos}/10
+- Proyectos cerrados: ${pedidos} (facturado $${Math.round(facturado)})
 - Clientes a reactivar: ${inactivos}
-- Stock destacado hoy: ${destacados}
 
-Dame el PLAN DE ACCIÓN de HOY: máximo 6 puntos, cada uno concreto y accionable, priorizado por impacto en facturación. Decí exactamente qué publicar (según el stock), a qué rubros mandar MD, y a qué clientes reactivar por nombre. No preguntes, ordená. No felicites. Español rioplatense, breve.`
+Dame el PLAN DE ACCIÓN de HOY: máximo 6 puntos, cada uno concreto y accionable, priorizado por impacto en facturación. Decí a qué rubros/marcas mandar MD, qué contenido propio publicar para mostrar el portfolio, y a qué clientes reactivar por nombre. No preguntes, ordená. No felicites. Español rioplatense, breve.`
 
   try {
     const plan = await ask(prompt, 600)

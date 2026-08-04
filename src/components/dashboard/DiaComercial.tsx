@@ -96,7 +96,7 @@ export default function DiaComercial() {
       {/* Módulo Mayoristas: ¿contactaste hoy cada rubro? */}
       {mayoristas.length > 0 && (
         <div className="card">
-          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Mayoristas — ¿contactaste hoy?</div>
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Rubros — ¿contactaste hoy?</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {mayoristas.map(m => (
               <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.85rem' }}>

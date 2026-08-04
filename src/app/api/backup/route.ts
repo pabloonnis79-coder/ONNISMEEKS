@@ -38,7 +38,7 @@ export async function GET() {
   const { data: settings } = await db.from('settings').select('*').order('key')
 
   const backup = {
-    app: 'vitto-mare',
+    app: 'onnismeeks',
     generado: new Date().toISOString(),
     conteos: {
       clients: clients.length,
@@ -55,7 +55,7 @@ export async function GET() {
   return new NextResponse(JSON.stringify(backup, null, 2), {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Content-Disposition': `attachment; filename="backup-vittomare-${fecha}.json"`,
+      'Content-Disposition': `attachment; filename="backup-onnismeeks-${fecha}.json"`,
       'Cache-Control': 'no-store',
     },
   })

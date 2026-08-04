@@ -23,8 +23,10 @@ const GROUPS = [
   {
     label: 'Config',
     items: [
+      { href: '/admin/prospecting', label: 'Prospección', icon: '🔍' },
       { href: '/admin/rubros',      label: 'Rubros',      icon: '🏷️' },
       { href: '/admin/duplicados',  label: 'Duplicados',  icon: '🔁' },
+      { href: '/admin/clients/exterior', label: 'Del exterior', icon: '🌎' },
       { href: '/admin/backup',      label: 'Backup datos', icon: '💾' },
       { href: '/admin/sistema',     label: 'Sistema',     icon: '⚙️' },
       { href: '/admin/settings',    label: 'Configuración', icon: '🛠️' },

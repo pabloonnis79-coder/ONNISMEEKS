@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react'
 import AltaDesdeIg from '@/components/clients/AltaDesdeIg'
 import { RUBROS_EXCLUIDOS, rubroExcluido } from '@/lib/prospecting/excluidos'
 
-const DEFAULT_RUBROS = ['restaurante', 'cerveceria', 'parrilla', 'sushi']
+// Sin rubros predeterminados: los carga el usuario a mano.
+const DEFAULT_RUBROS: string[] = []
 
 interface Result {
   name: string
@@ -17,11 +18,8 @@ interface Result {
   existing?: boolean
 }
 
-const RUBROS_GASTRONOMIA = [
-  'restaurante', 'parrilla', 'bar', 'cafeteria', 'pizzeria', 'sushi',
-  'bodegon', 'rotiseria', 'cantina', 'hamburgueseria', 'catering',
-  'verduleria', 'almacen', 'buffet', 'comida rapida',
-]
+// Sin sugerencias fijas: los rubros son 100% manuales y configurables.
+const RUBROS_GASTRONOMIA: string[] = []
 
 const ZONAS_CABA = [
   'Palermo', 'Recoleta', 'San Telmo', 'Belgrano', 'Caballito', 'Almagro',
@@ -172,9 +170,11 @@ export default function ProspectingPage() {
       <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: 12 }}>
         Buscá negocios y la IA los califica e importa al CRM automáticamente.
       </p>
-      <div style={{ fontSize: '0.76rem', color: '#f59e0b', background: '#f59e0b12', border: '1px solid #f59e0b44', borderRadius: 8, padding: '7px 12px', marginBottom: 24 }}>
-        🚫 Rubros excluidos de la prospección: {RUBROS_EXCLUIDOS.join(', ')} — no se importan aunque los busques.
-      </div>
+      {RUBROS_EXCLUIDOS.length > 0 && (
+        <div style={{ fontSize: '0.76rem', color: '#f59e0b', background: '#f59e0b12', border: '1px solid #f59e0b44', borderRadius: 8, padding: '7px 12px', marginBottom: 24 }}>
+          🚫 Rubros excluidos de la prospección: {RUBROS_EXCLUIDOS.join(', ')} — no se importan aunque los busques.
+        </div>
+      )}
 
       {/* Editor de rubros a prospectar (editable, guardado en la config) */}
       <div className="card" style={{ marginBottom: 16 }}>
@@ -196,12 +196,14 @@ export default function ProspectingPage() {
             style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: 'var(--text)', fontSize: '0.85rem' }} />
           <button onClick={agregarRubro} className="btn btn-primary" style={{ fontSize: '0.82rem' }}>+ Agregar</button>
         </div>
-        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>Sugerencias:</span>
-          {RUBROS_GASTRONOMIA.filter(r => !rubros.includes(r) && !rubroExcluido(r)).map(r => (
-            <button key={r} onClick={() => guardarRubros([...rubros, r])} style={{ fontSize: '0.72rem', padding: '2px 9px', borderRadius: 12, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>+ {r}</button>
-          ))}
-        </div>
+        {RUBROS_GASTRONOMIA.length > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>Sugerencias:</span>
+            {RUBROS_GASTRONOMIA.filter(r => !rubros.includes(r) && !rubroExcluido(r)).map(r => (
+              <button key={r} onClick={() => guardarRubros([...rubros, r])} style={{ fontSize: '0.72rem', padding: '2px 9px', borderRadius: 12, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>+ {r}</button>
+            ))}
+          </div>
+        )}
         <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginTop: 8 }}>
           Esta lista la usan tanto la búsqueda manual (por rubros/zonas) como la prospección automática diaria.
         </div>

@@ -1,9 +1,10 @@
 // Rubros que el sistema NO debe prospectar (decisión de negocio).
 // Se aplica tanto a la prospección manual como al cron automático.
-export const RUBROS_EXCLUIDOS = ['Autoservicios', 'Hoteles', 'Supermercados', 'Carnicerías', 'Dietéticas']
+// Vacío: no hay rubros excluidos por defecto. Los rubros se manejan a mano.
+export const RUBROS_EXCLUIDOS: string[] = []
 
 // Raíces normalizadas (sin acentos, minúsculas) que marcan un rubro excluido.
-const STEMS = ['autoservicio', 'hotel', 'supermercado', 'carnicer', 'dietetic']
+const STEMS: string[] = []
 
 // Saca acentos (elimina los diacríticos combinantes U+0300–U+036F) sin usar regex.
 function norm(s: string): string {

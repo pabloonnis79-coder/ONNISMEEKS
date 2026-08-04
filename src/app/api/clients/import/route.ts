@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const db = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-)
+// Cliente lazy: se crea en runtime, no al cargar el módulo (evita romper el build)
+function getDb() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+  )
+}
 
 interface ImportRow {
   name?: string
@@ -23,6 +26,7 @@ function nombreDe(row: ImportRow): string {
 }
 
 export async function POST(req: NextRequest) {
+  const db = getDb()
   const { rows }: { rows: ImportRow[] } = await req.json()
   if (!rows?.length) return NextResponse.json({ imported: 0, skipped: 0 })
 

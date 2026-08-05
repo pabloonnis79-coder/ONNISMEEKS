@@ -12,35 +12,31 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
   const { data: client } = await db.from('clients').select('*').eq('id', id).single()
   if (!client) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
 
-  const [companyName, companyDesc, compraMinima] = await Promise.all([
+  const [companyName, companyDesc, portfolioUrl] = await Promise.all([
     getSetting('COMPANY_NAME'),
     getSetting('COMPANY_DESCRIPTION'),
-    getSetting('COMPRA_MINIMA'),
+    getSetting('PORTFOLIO_URL'),
   ])
 
-  const nombre = companyName || 'nuestro equipo'
-  const descripcion = companyDesc || 'pescados y mariscos frescos'
-  const catalogoUrl  = 'https://vittomare.com/productos'
+  const nombre = companyName || 'Onnismeeks'
+  const descripcion = companyDesc || 'producción audiovisual: reels, comerciales y contenido para marcas'
 
-  const fish  = String.fromCodePoint(0x1F41F)
-  const truck = String.fromCodePoint(0x1F69A)
-  const snow  = String.fromCodePoint(0x2744, 0xFE0F)
-  const wave  = String.fromCodePoint(0x1F60A)
+  const clap  = String.fromCodePoint(0x1F3AC)
+  const cam   = String.fromCodePoint(0x1F3A5)
+  const wave  = String.fromCodePoint(0x1F44B)
   const spark = String.fromCodePoint(0x2728)
 
-  const esPrimerContacto = !client.fecha_primer_contacto && !client.last_contact
-
-  const cuerpo = `${fish} Seleccionamos nuestros productos diariamente para garantizar la mejor calidad.\n${truck} Hacemos entregas a domicilio.\n${snow} Mantenemos la cadena de frío en todo el proceso.${compraMinima ? `\n🛒 Compra mínima: ${compraMinima}` : ''}`
-
   const nombreLugar = (client.name || '').trim()
+  // Primer contacto → mensaje rotativo. Si ya lo contactaste, un re-contacto cordial.
+  const esPrimerContacto = !client.fecha_primer_contacto && !client.last_contact
   const whatsapp = esPrimerContacto
     ? elegirPrimerContacto(id, nombreLugar, client.rubro)
-    : `¡Hola! ${wave} ¿Cómo estás?\n\nTe escribimos de *${nombre}*, especialistas en ${descripcion}.\n\n${cuerpo}\n\nPodés ver todos nuestros productos y precios en:\n${catalogoUrl}\n\n${spark} Nuestro compromiso es que disfrutes productos frescos y de la mejor calidad en cada entrega.\n\n¿Te gustaría recibir nuestro catálogo o hacer un pedido? Estamos para ayudarte.`
+    : `¡Hola${nombreLugar ? ' ' + nombreLugar : ''}! ${wave} ¿Cómo va?\n\nTe escribimos de *${nombre}* — ${descripcion}.\n\n${clap} Producimos contenido pensado para que la marca destaque en redes.\n${cam} Reels, comerciales y videos de marca, de la idea al montaje final.${portfolioUrl ? `\n\nPodés ver nuestros trabajos acá:\n${portfolioUrl}` : ''}\n\n${spark} Si tienen algo en mente para este mes, con gusto les armamos una propuesta.\n\n¿Charlamos?`
 
   const phone = (client.phone || '').replace(/\D/g, '')
   const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(whatsapp)}` : null
 
-  const respuestas = respuestasRapidas(nombreLugar, client.rubro, compraMinima)
+  const respuestas = respuestasRapidas(nombreLugar, client.rubro)
 
   return NextResponse.json({ url, message: whatsapp, instagram: igHandle(client.instagram), respuestas })
 }

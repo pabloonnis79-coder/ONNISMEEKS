@@ -120,7 +120,7 @@ export default function DiaComercial() {
         {plan && (
           <div style={{ marginTop: 10, fontSize: '0.85rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{plan}</div>
         )}
-        {!plan && <div style={{ marginTop: 6, fontSize: '0.76rem', color: 'var(--muted)' }}>Te arma el plan de hoy priorizado por facturación, según tu estado, stock y clientes a reactivar.</div>}
+        {!plan && <div style={{ marginTop: 6, fontSize: '0.76rem', color: 'var(--muted)' }}>Te arma el plan de hoy priorizado por facturación, según tu estado del día y las marcas a reactivar.</div>}
       </div>
 
       {/* Objetivos por módulo */}
